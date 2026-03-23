@@ -1,31 +1,32 @@
-FROM php:8.0
+FROM phpswoole/swoole:php8.5
 
-RUN pecl install swoole > /dev/null && \
-    docker-php-ext-enable swoole
-RUN docker-php-ext-install pdo_mysql pcntl opcache > /dev/null
+RUN apt-get -y update > /dev/null \
+    && apt-get install -y libicu-dev > /dev/null \
+    && docker-php-ext-configure intl > /dev/null \
+    && docker-php-ext-install intl pcntl > /dev/null
 
 RUN echo "opcache.enable_cli=1" >> /usr/local/etc/php/conf.d/docker-php-ext-opcache.ini
 RUN echo "opcache.jit=1205" >> /usr/local/etc/php/conf.d/docker-php-ext-opcache.ini
 RUN echo "opcache.jit_buffer_size=128M" >> /usr/local/etc/php/conf.d/docker-php-ext-opcache.ini
 
-ADD ./ /laravel
 WORKDIR /laravel
+COPY --link . .
 
-RUN mkdir -p /laravel/bootstrap/cache /laravel/storage/logs /laravel/storage/framework/sessions /laravel/storage/framework/views /laravel/storage/framework/cache
-RUN chmod -R 777 /laravel
+RUN mkdir -p bootstrap/cache \
+            storage/logs \
+            storage/framework/sessions \
+            storage/framework/views \
+            storage/framework/cache
 
-RUN deploy/swoole/install-composer.sh
-RUN apt-get update > /dev/null && \
-    apt-get install -yqq git unzip > /dev/null
-COPY deploy/laravel-s/composer* ./
+COPY --link deploy/laravel-s/composer.json .
 
 RUN echo "LARAVELS_LISTEN_IP=0.0.0.0" >> .env
-RUN echo "LARAVELS_LISTEN_PORT=5200" >> .env
+RUN echo "LARAVELS_LISTEN_PORT=8080" >> .env
 
-RUN php composer.phar install -a --no-dev --quiet
+RUN composer install -a --no-dev --quiet
 RUN php artisan optimize
 RUN php artisan laravels publish
 
-EXPOSE 5200
+EXPOSE 8080
 
-CMD bin/laravels start
+ENTRYPOINT [ "php", "bin/laravels", "start" ]

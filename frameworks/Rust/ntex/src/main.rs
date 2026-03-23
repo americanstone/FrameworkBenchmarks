@@ -1,54 +1,50 @@
 #[global_allocator]
 static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
 
-use bytes::Bytes;
+use ntex::http::header::{CONTENT_TYPE, SERVER};
 use ntex::{http, web};
-use yarte::Serialize;
+use sonic_rs::Serialize;
 
 mod utils;
-use utils::SIZE;
 
 #[derive(Serialize)]
 pub struct Message {
     pub message: &'static str,
 }
 
+#[web::get("/json")]
 async fn json() -> web::HttpResponse {
-    let mut body = Vec::with_capacity(SIZE);
-    Message {
-        message: "Hello, World!",
-    }
-    .to_bytes_mut(&mut body);
+    let body = utils::buffer(256, |buf| {
+        sonic_rs::to_writer(
+            utils::BVecWriter(buf),
+            &Message {
+                message: "Hello, World!",
+            },
+        )
+        .unwrap();
 
-    let mut res = web::HttpResponse::with_body(
-        http::StatusCode::OK,
-        http::body::Body::Bytes(Bytes::from(body)),
-    );
-    res.headers_mut().insert(
-        http::header::SERVER,
-        http::header::HeaderValue::from_static("N"),
-    );
-    res.headers_mut().insert(
-        http::header::CONTENT_TYPE,
-        http::header::HeaderValue::from_static("application/json"),
-    );
-    res
+        buf.take()
+    });
+
+    let mut response = web::HttpResponse::with_body(http::StatusCode::OK, body.into());
+    response.headers_mut().insert(SERVER, utils::HDR_SERVER);
+    response
+        .headers_mut()
+        .insert(CONTENT_TYPE, utils::HDR_JSON_CONTENT_TYPE);
+    response
 }
 
+#[web::get("/plaintext")]
 async fn plaintext() -> web::HttpResponse {
-    let mut res = web::HttpResponse::with_body(
+    let mut response = web::HttpResponse::with_body(
         http::StatusCode::OK,
-        http::body::Body::Bytes(Bytes::from_static(b"Hello, World!")),
+        http::body::Body::Bytes(utils::BODY_PLAIN_TEXT),
     );
-    res.headers_mut().insert(
-        http::header::SERVER,
-        http::header::HeaderValue::from_static("N"),
-    );
-    res.headers_mut().insert(
-        http::header::CONTENT_TYPE,
-        http::header::HeaderValue::from_static("text/plain"),
-    );
-    res
+    response.headers_mut().insert(SERVER, utils::HDR_SERVER);
+    response
+        .headers_mut()
+        .insert(CONTENT_TYPE, utils::HDR_TEXT_CONTENT_TYPE);
+    response
 }
 
 #[ntex::main]
@@ -58,18 +54,11 @@ async fn main() -> std::io::Result<()> {
     // start http server
     ntex::server::build()
         .backlog(1024)
-        .bind("techempower", "0.0.0.0:8080", || {
-            http::HttpService::build()
-                .keep_alive(http::KeepAlive::Os)
-                .client_timeout(0)
-                .h1(ntex::map_config(
-                    web::App::new()
-                        .service(web::resource("/json").to(json))
-                        .service(web::resource("/plaintext").to(plaintext)),
-                    |_| web::dev::AppConfig::default(),
-                ))
-                .tcp()
+        .enable_affinity()
+        .bind("tfb", "0.0.0.0:8080", async |_| {
+            http::HttpService::h1(web::App::new().service(json).service(plaintext).finish())
         })?
-        .start()
+        .config("tfb", utils::config())
+        .run()
         .await
 }

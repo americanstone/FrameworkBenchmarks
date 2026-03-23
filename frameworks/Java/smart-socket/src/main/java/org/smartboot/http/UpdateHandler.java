@@ -1,7 +1,10 @@
 package org.smartboot.http;
 
-import org.smartboot.http.server.handle.HttpHandle;
-import org.smartboot.http.utils.NumberUtils;
+
+import tech.smartboot.feat.core.common.FeatUtils;
+import tech.smartboot.feat.core.server.HttpHandler;
+import tech.smartboot.feat.core.server.HttpRequest;
+import tech.smartboot.feat.core.server.HttpResponse;
 
 import javax.sql.DataSource;
 import java.io.IOException;
@@ -16,7 +19,7 @@ import java.util.concurrent.ThreadLocalRandom;
  * @author 三刀
  * @version V1.0 , 2020/6/16
  */
-public class UpdateHandler extends HttpHandle {
+public class UpdateHandler implements HttpHandler {
     private DataSource dataSource;
 
     public UpdateHandler(DataSource dataSource) {
@@ -24,8 +27,9 @@ public class UpdateHandler extends HttpHandle {
     }
 
     @Override
-    public void doHandle(HttpRequest httpRequest, HttpResponse response) throws IOException {
-        int queries = Math.min(Math.max(NumberUtils.toInt(httpRequest.getParameter("queries"), 1), 1), 500);
+    public void handle(HttpRequest request) throws IOException {
+        HttpResponse response = request.getResponse();
+        int queries = Math.min(Math.max(FeatUtils.toInt(request.getParameter("queries"), 1), 1), 500);
         World[] worlds = new World[queries];
         StringJoiner updateSql = new StringJoiner(
                 ", ",

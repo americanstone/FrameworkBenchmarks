@@ -1,4 +1,6 @@
-﻿using System;
+﻿
+using BeetleX.Light.Memory;
+using System;
 using System.Collections.Generic;
 using System.Text;
 using System.Threading;
@@ -47,7 +49,7 @@ namespace PlatformBenchmarks
             }
         }
 
-        public ArraySegment<byte> DATE
+        public Memory<byte> DATE
         {
             get;
             set;
@@ -86,19 +88,27 @@ namespace PlatformBenchmarks
 
         private void Init()
         {
-            DATE = GetData(inLine: true);
+            DATE = GetData();
             mUpdateTime = new Timer(delegate
             {
-                DATE = GetData(inLine: true);
+                DATE = GetData();
             }, null, 1000, 1000);
         }
 
-        private ArraySegment<byte> GetData(bool inLine = false)
+        private Memory<byte> GetData()
         {
-            return GetData(DateTime.Now, inLine);
+            return GetData(DateTime.Now);
         }
 
-        private ArraySegment<byte> GetData(DateTime date, bool inLine = false)
+
+
+        public void Write(IStreamWriter stream)
+        {
+
+            stream.Write(DATE.Span);
+        }
+
+        private Memory<byte> GetData(DateTime date)
         {
             date = date.ToUniversalTime();
             int offset13 = 0;
@@ -172,14 +182,17 @@ namespace PlatformBenchmarks
             offset13++;
             buffer[offset13] = sub8[2];
             offset13++;
-            if (inLine)
-            {
-                buffer[offset13] = _r;
-                offset13++;
-                buffer[offset13] = _n;
-                offset13++;
-            }
-            return new ArraySegment<byte>(GTM_BUFFER, 0, offset13);
+
+            buffer[offset13] = _r;
+            offset13++;
+            buffer[offset13] = _n;
+            offset13++;
+            buffer[offset13] = _r;
+            offset13++;
+            buffer[offset13] = _n;
+            offset13++;
+
+            return new Memory<byte>(GTM_BUFFER, 0, offset13);
         }
     }
 

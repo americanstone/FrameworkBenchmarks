@@ -1,22 +1,22 @@
-source 'https://rubygems.org'
+source "https://rubygems.org"
 
-gem 'erubi', '~> 1.4'
-gem 'json', '~> 2.0'
-gem 'passenger', '~> 5.1', :platforms=>[:ruby, :mswin], :require=>false
-gem 'puma', '~> 3.9', :require=>false
-gem 'sequel', '~> 5.0'
-gem 'roda', '~> 3.0'
-gem 'tilt', '~> 2.0', :require=>'tilt/erb'
-gem 'torquebox-web', '>= 4.0.0.beta3', '< 5', :platforms=>:jruby, :require=>false
-gem 'unicorn', '~> 5.2', :platforms=>[:ruby, :mswin], :require=>false
+gem "erubi", "~> 1.12"
+gem "json"
+gem "sequel", "~> 5.67"
+gem "roda", "~> 3.66"
+gem "tilt", "~> 2.1", require: "tilt/erb"
+gem "cgi" # Make sure the h plugin uses the faster CGI.escape_html
+gem "concurrent-ruby"
 
-group :mysql do
-  gem 'jdbc-mysql', '~> 5.1', :platforms=>:jruby, :require=>'jdbc/mysql'
-  gem 'mysql2', '~> 0.4', :platforms=>[:ruby, :mswin]
+group :mysql, optional: true do
+  gem "trilogy", "~> 2.10"
 end
 
-group :postgresql do
-  gem 'jdbc-postgres', '~> 9.4', :platforms=>:jruby, :require=>'jdbc/postgres'
-  gem 'pg', '~> 0.19', :platforms=>[:ruby, :mswin]
-  gem 'sequel_pg', '~> 1.6', :platforms=>:ruby, :require=>false
+group :postgresql, optional: true do
+  gem "pg", "~> 1.4"
+  gem "sequel_pg", "~> 1.17", require: "sequel"
+end
+
+group :iodine, optional: true do
+  gem "iodine", "~> 0.7", require: false
 end

@@ -1,28 +1,52 @@
-
 /**
  * Module dependencies.
  */
-
 const cluster = require('cluster'),
   numCPUs = require('os').cpus().length,
   express = require('express'),
-  pgp = require('pg-promise')(),
   helper = require('./helper');
 
-// Middleware
-const bodyParser = require('body-parser');
-
-const connection = {
-  db: 'hello_world',
-  username: 'benchmarkdbuser',
-  password: 'benchmarkdbpass',
+const Sequelize = require('sequelize');
+const sequelize = new Sequelize('hello_world', 'benchmarkdbuser', 'benchmarkdbpass', {
   host: 'tfb-database',
-  dialect: 'postgres'
-}
+  dialect: 'postgres',
+  logging: false,
+  pool: {
+    max: 50,
+    min: 0,
+    idle: 10000
+  }
+});
 
-const db = pgp(`postgres://${connection.username}:${connection.password}@${connection.host}:5432/${connection.db}`);
+const Worlds = sequelize.define('world', {
+  id: {
+    type: 'Sequelize.INTEGER',
+    primaryKey: true
+  },
+  randomnumber: { type: 'Sequelize.INTEGER' }
+}, {
+  timestamps: false,
+  freezeTableName: true
+});
 
-if (cluster.isMaster) {
+const Fortunes = sequelize.define('fortune', {
+  id: {
+    type: 'Sequelize.INTEGER',
+    primaryKey: true
+  },
+  message: { type: 'Sequelize.STRING' }
+}, {
+  timestamps: false,
+  freezeTableName: true
+});
+
+const randomWorldPromise = () => {
+  return Worlds.findOne({
+    where: { id: helper.randomizeNum() }
+  });
+};
+
+if (cluster.isPrimary) {
   // Fork workers.
   for (let i = 0; i < numCPUs; i++) {
     cluster.fork();
@@ -33,69 +57,76 @@ if (cluster.isMaster) {
 } else {
   const app = module.exports = express();
 
+  app.set('x-powered-by', false);
+  app.set('etag', false)
+
   app.set('view engine', 'pug');
   app.set('views', __dirname + '/views');
-  app.use(bodyParser.urlencoded({ extended: true }));
-  app.use(bodyParser.json());
-
-  // Set headers for all routes
-  app.use((req, res, next) => {
-    res.setHeader("Server", "Express");
-    return next();
-  });
 
   // Routes
   app.get('/db', async (req, res) => {
-    let world = await getRandomWorld();
+    let world = await randomWorldPromise();
 
     res.setHeader("Content-Type", "application/json");
+    res.setHeader("Server", "Express");
     res.json(world);
   });
 
   app.get('/queries', async (req, res) => {
-    const results = [],
-      queries = Math.min(parseInt(req.query.queries) || 1, 500);
+    const queries = Math.min(parseInt(req.query.queries) || 1, 500);
+
+    const promisesArray = [];
 
     for (let i = 0; i < queries; i++) {
-      results.push(await getRandomWorld());
+      promisesArray.push(randomWorldPromise());
     }
 
-    res.json(results)
+    res.setHeader("Server", "Express");
+    res.json(await Promise.all(promisesArray))
   });
 
   app.get('/fortunes', async (req, res) => {
-    let fortunes = await getAllFortunes()
+    let fortunes = await Fortunes.findAll();
     const newFortune = { id: 0, message: "Additional fortune added at request time." };
     fortunes.push(newFortune);
     fortunes.sort((a, b) => (a.message < b.message) ? -1 : 1);
 
+    res.setHeader("Server", "Express");
     res.render('fortunes/index', { fortunes: fortunes });
   });
 
   app.get('/updates', async (req, res) => {
-    const results = [],
-      queries = Math.min(parseInt(req.query.queries) || 1, 500);
+    const queries = Math.min(parseInt(req.query.queries) || 1, 500);
+    const worldPromises = [];
 
-    for (let i = 1; i <= queries; i++) {
-      results.push(await updateRandomWorld())
+    for (let i = 0; i < queries; i++) {
+      worldPromises.push(randomWorldPromise());
     }
 
-    res.json(results);
+    const worldUpdate = async(world) => {
+      world.randomnumber = helper.randomizeNum();
+
+      await Worlds.update({
+        randomnumber: world.randomnumber
+      },
+      {
+        where: { id: world.id }
+      });
+      return world;
+    };
+
+    const worlds = await Promise.all(worldPromises);
+    
+    const updates = worlds.map((e) => worldUpdate(e));
+
+    const updated = await Promise.all(updates);
+    
+    res.setHeader("Server", "Express");
+    res.json(updated);
   });
 
-  const getRandomWorld = async () => {
-    return await db.one(`select * from world where id = ${helper.randomizeNum()}`, [true])
-  };
-
-  const updateRandomWorld = async () => {
-    return await db.oneOrNone(`update world set randomNumber = ${helper.randomizeNum()} where id = ${helper.randomizeNum()} returning id, randomNumber`, [true])
-  };
-
-  const getAllFortunes = async () => {
-    return await db.many('select * from fortune', [true]);
-  };
-
-  app.listen(8080, () => {
+  const server = app.listen(8080, () => {
     console.log('listening on port 8080');
   });
+  server.keepAliveTimeout = 0;
 }

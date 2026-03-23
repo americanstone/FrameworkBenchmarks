@@ -2,6 +2,7 @@
 
 (require db
          json
+         racket/async-channel
          racket/fasl
          racket/port
          racket/serialize
@@ -10,7 +11,12 @@
          web-server/dispatch
          web-server/http
          web-server/http/response
+         web-server/safety-limits
+         web-server/web-server
          xml)
+
+(provide
+ start)
 
 ;; db ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -96,8 +102,8 @@
     (query-exec *db* update-one-world (world-id r) (world-n r))))
 
 (define (world->hash r)
-  (hash 'id (world-id r)
-        'randomNumber (world-n r)))
+  (hasheq 'id (world-id r)
+          'randomNumber (world-n r)))
 
 
 ;; fortune ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -207,20 +213,7 @@
       (response/json
        (map world->hash worlds)))]))
 
-(module+ main
-  (require racket/async-channel
-           racket/cmdline
-           racket/format
-           web-server/http/response
-           web-server/safety-limits
-           web-server/web-server
-           "unix-socket-tcp-unit.rkt")
-
-  (define port
-    (command-line
-     #:args (port)
-     (string->number port)))
-
+(define (start host port tcp@)
   (define (app c req)
     (output-response c (dispatch req)))
 
@@ -228,12 +221,13 @@
   (define stop
     (serve
      #:dispatch app
-     #:listen-ip "127.0.0.1"
+     #:listen-ip host
      #:port port
-     #:tcp@ (make-unix-socket-tcp@ port (format "~a.sock" port))
+     #:tcp@ tcp@
      #:confirmation-channel ch
      #:safety-limits (make-safety-limits
-                      #:max-waiting 4096
+                      #:max-concurrent 1000
+                      #:max-waiting 65535
                       #:request-read-timeout 16
                       #:response-timeout 16
                       #:response-send-timeout 16)))
@@ -242,11 +236,11 @@
   (when (exn:fail? ready-or-exn)
     (raise ready-or-exn))
 
-  (call-with-output-file (build-path (~a port ".ready"))
-    (lambda (out)
-      (displayln "ready" out)))
+  stop)
 
-  (with-handlers ([exn:break?
-                   (lambda (_e)
-                     (stop))])
-    (sync/enable-break never-evt)))
+(module+ main
+  (require net/tcp-unit)
+  (define stop (start "127.0.0.1" 8000 tcp@))
+  (with-handlers ([exn:break? (λ (_) (stop))])
+    (displayln "ready")
+    (sync never-evt)))

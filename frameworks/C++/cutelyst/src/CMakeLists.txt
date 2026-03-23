@@ -1,15 +1,23 @@
-cmake_minimum_required(VERSION 3.6.0 FATAL_ERROR)
+cmake_minimum_required(VERSION 3.11.0 FATAL_ERROR)
 
 project(cutelyst_benchmarks LANGUAGES CXX)
 
 cmake_policy(SET CMP0069 NEW)
 
-find_package(Qt5 5.6.0 REQUIRED COMPONENTS Core Network Sql)
-find_package(ASqlQt5 0.15.0 REQUIRED)
-find_package(Cutelyst2Qt5 2.12 REQUIRED)
-find_package(Cutelee5 REQUIRED)
+include(FetchContent)
+
+FetchContent_Declare(
+  mimalloc
+  GIT_REPOSITORY https://github.com/microsoft/mimalloc.git
+  GIT_TAG        b3b0fb58326a96beea1f4872bc1489d1d9fda7e0 # v2.0.2
+)
+FetchContent_MakeAvailable(mimalloc)
+
+find_package(Qt6 6.2.0 REQUIRED COMPONENTS Core Network Sql)
+find_package(ASqlQt6 0.84 REQUIRED)
+find_package(Cutelyst4Qt6 3.6 REQUIRED)
+find_package(Cutelee6Qt6 6.1.0 REQUIRED)
 find_package(PostgreSQL REQUIRED)
-find_package(mimalloc 1.0)
 
 # Auto generate moc files
 set(CMAKE_AUTOMOC ON)
@@ -18,7 +26,7 @@ set(CMAKE_AUTOMOC ON)
 # to always look for includes there:
 set(CMAKE_INCLUDE_CURRENT_DIR ON)
 
-set(CMAKE_CXX_STANDARD 11)
+set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 file(GLOB_RECURSE TEMPLATES_SRC root/*)
@@ -36,10 +44,10 @@ set(cutelyst_benchmarks_SRCS
     multipledatabasequeriestest.h
     plaintexttest.cpp
     plaintexttest.h
-    root.cpp
-    root.h
     singledatabasequerytest.cpp
     singledatabasequerytest.h
+    cachedqueries.h
+    cachedqueries.cpp
     ${TEMPLATES_SRC}
 )
 
@@ -52,23 +60,26 @@ target_link_libraries(cutelyst_benchmarks
     Cutelyst::Core
     Cutelyst::Utils::Sql
     Cutelyst::View::Cutelee
-    Qt5::Core
-    Qt5::Network
-    Qt5::Sql
-    ASqlQt5::Core
+    Qt::Core
+    Qt::Network
+    Qt::Sql
+    ASql::Core
+    ASql::Pg
 )
 
 add_executable(cutelyst-benchmarks ${cutelyst_benchmarks_SRCS} main.cpp)
 target_link_libraries(cutelyst-benchmarks
     PUBLIC
     Cutelyst::Core
-    Cutelyst::WSGI
+    Cutelyst::Server
     Cutelyst::Utils::Sql
     Cutelyst::View::Cutelee
-    Qt5::Core
-    Qt5::Network
-    Qt5::Sql
-    ASqlQt5::Core
+    Qt::Core
+    Qt::Network
+    Qt::Sql
+    ASql::Core
+    ASql::Pg
+    mimalloc
 )
 if (mimalloc_FOUND)
     target_link_libraries(cutelyst-benchmarks PUBLIC mimalloc)

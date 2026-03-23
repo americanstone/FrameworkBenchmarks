@@ -1,22 +1,42 @@
-from functools import partial
+import platform
 from operator import attrgetter, itemgetter
-from random import randint
+from pathlib import Path
+from random import randint, sample
 
-from aiohttp_jinja2 import template
-from aiohttp.web import Response, json_response
-import ujson
+import jinja2
+from aiohttp.web import Response
+from sqlalchemy import bindparam, select
+from sqlalchemy.orm.attributes import flag_modified
 
-from sqlalchemy import select
+from .models import Fortune, World
 
-from .models import sa_fortunes, sa_worlds, Fortune, World
+if platform.python_implementation() == "PyPy":
+    from aiohttp.web import json_response
+else:
+    from orjson import dumps
 
-json_response = partial(json_response, dumps=ujson.dumps)
+    def json_response(payload):
+        return Response(
+            body=dumps(payload),
+            content_type="application/json",
+        )
+
+READ_ROW_SQL = 'SELECT "randomnumber", "id" FROM "world" WHERE id = $1'
+READ_SELECT_ORM = select(World.randomnumber).where(World.id == bindparam("id"))
+READ_FORTUNES_ORM = select(Fortune.id, Fortune.message)
+WRITE_ROW_SQL = 'UPDATE "world" SET "randomnumber"=$2 WHERE id=$1'
+WRITE_ROW_BATCH_SQL = 'UPDATE "world" w SET "randomnumber"=u.new_val FROM (SELECT unnest($1::int[]) as id, unnest($2::int[]) as new_val) u WHERE w.id = u.id'
+
+template_path = Path(__file__).parent / 'templates' / 'fortune.jinja'
+template = jinja2.Template(template_path.read_text())
+sort_fortunes_orm = attrgetter('message')
+sort_fortunes_raw = itemgetter('message')
 
 
 def get_num_queries(request):
     try:
-        num_queries = int(request.match_info.get('queries', 1))
-    except ValueError:
+        num_queries = int(request.match_info['queries'])
+    except (KeyError, ValueError):
         return 1
     if num_queries < 1:
         return 1
@@ -38,9 +58,7 @@ async def single_database_query_orm(request):
     """
     id_ = randint(1, 10000)
     async with request.app['db_session']() as sess:
-        # TODO(SA1.4.0b2): sess.scalar()
-        ret = await sess.execute(select(World.randomnumber).filter_by(id=id_))
-        num = ret.scalar()
+        num = await sess.scalar(READ_SELECT_ORM, {"id": id_})
     return json_response({'id': id_, 'randomNumber': num})
 
 
@@ -51,7 +69,7 @@ async def single_database_query_raw(request):
     id_ = randint(1, 10000)
 
     async with request.app['pg'].acquire() as conn:
-        r = await conn.fetchval('SELECT id,randomnumber FROM world WHERE id = $1', id_)
+        r = await conn.fetchval(READ_ROW_SQL, id_)
     return json_response({'id': id_, 'randomNumber': r})
 
 
@@ -62,14 +80,11 @@ async def multiple_database_queries_orm(request):
     num_queries = get_num_queries(request)
 
     ids = [randint(1, 10000) for _ in range(num_queries)]
-    ids.sort()
 
     result = []
     async with request.app['db_session']() as sess:
         for id_ in ids:
-            # TODO(SA1.4.0b2): sess.scalar()
-            ret = await sess.execute(select(World.randomnumber).filter_by(id=id_))
-            num = ret.scalar()
+            num = await sess.scalar(READ_SELECT_ORM, {"id": id_})
             result.append({'id': id_, 'randomNumber': num})
     return json_response(result)
 
@@ -80,43 +95,37 @@ async def multiple_database_queries_raw(request):
     """
     num_queries = get_num_queries(request)
 
-    ids = [randint(1, 10000) for _ in range(num_queries)]
-    ids.sort()
+    ids = [(randint(1, 10000), ) for _ in range(num_queries)]
 
-    result = []
     async with request.app['pg'].acquire() as conn:
-        stmt = await conn.prepare('SELECT id,randomnumber FROM world WHERE id = $1')
-        for id_ in ids:
-            result.append({
-                'id': id_,
-                'randomNumber': await stmt.fetchval(id_),
-            })
+        rows = await conn.fetchmany(READ_ROW_SQL, ids)
+        result = [{'id': id_[0], 'randomNumber': row[0]} for id_, row in zip(ids, rows)]
     return json_response(result)
 
 
-@template('fortune.jinja')
 async def fortunes(request):
     """
     Test 4 ORM
     """
     async with request.app['db_session']() as sess:
-        ret = await sess.execute(select(Fortune.id, Fortune.message))
+        ret = await sess.execute(READ_FORTUNES_ORM)
         fortunes = ret.all()
     fortunes.append(Fortune(id=0, message='Additional fortune added at request time.'))
-    fortunes.sort(key=attrgetter('message'))
-    return {'fortunes': fortunes}
+    fortunes.sort(key=sort_fortunes_orm)
+    content = template.render(fortunes=fortunes)
+    return Response(text=content, content_type='text/html')
 
 
-@template('fortune.jinja')
 async def fortunes_raw(request):
     """
     Test 4 RAW
     """
     async with request.app['pg'].acquire() as conn:
         fortunes = await conn.fetch('SELECT * FROM Fortune')
-    fortunes.append(dict(id=0, message='Additional fortune added at request time.'))
-    fortunes.sort(key=itemgetter('message'))
-    return {'fortunes': fortunes}
+    fortunes.append({'id': 0, 'message': 'Additional fortune added at request time.'})
+    fortunes.sort(key=sort_fortunes_raw)
+    content = template.render(fortunes=fortunes)
+    return Response(text=content, content_type='text/html')
 
 
 async def updates(request):
@@ -124,46 +133,42 @@ async def updates(request):
     Test 5 ORM
     """
     num_queries = get_num_queries(request)
-    result = []
+    update_ids = sample(range(1, 10001), num_queries)
+    update_ids.sort()
+    updates = tuple(zip(update_ids, sample(range(1, 10001), num_queries)))
+    worlds = [{'id': row_id, 'randomNumber': number} for row_id, number in updates]
 
-    ids = [randint(1, 10000) for _ in range(num_queries)]
-    ids.sort()
-
-    # TODO(SA1.4.0b2): async with request.app['db_session'].begin() as sess:
-    async with request.app['db_session']() as sess:
-        async with sess.begin():
-            for id_ in ids:
-                rand_new = randint(1, 10000)
-                # TODO(SA1.4.0b2): world = await sess.get(World, id_)
-                ret = await sess.execute(select(World).filter_by(id=id_))
-                world = ret.scalar()
-                world.randomnumber = rand_new
-
-                result.append({'id': id_, 'randomNumber': rand_new})
-    return json_response(result)
+    async with request.app['db_session'].begin() as sess:
+        for id_, number in updates:
+            world = await sess.get(World, id_, populate_existing=True)
+            world.randomnumber = number
+            # Force sqlalchemy to UPDATE entry even if the value has not changed
+            # doesn't make sense in a real application, added only to pass tests.
+            flag_modified(world, "randomnumber")
+    return json_response(worlds)
 
 async def updates_raw(request):
     """
     Test 5 RAW
     """
     num_queries = get_num_queries(request)
+    update_ids = sample(range(1, 10001), num_queries)
+    update_ids.sort()
 
-    ids = [randint(1, 10000) for _ in range(num_queries)]
-    ids.sort()
+    numbers = sample(range(1, 10001), num_queries)
+    fetch_params = [(i,) for i in update_ids]
+    row_updates = [*zip(update_ids, numbers)]
 
-    result = []
-    updates = []
     async with request.app['pg'].acquire() as conn:
-        stmt = await conn.prepare('SELECT id,randomnumber FROM world WHERE id = $1')
-        for id_ in ids:
-            # the result of this is the int previous random number which we don't actually use
-            await stmt.fetchval(id_)
-            rand_new = randint(1, 10000)
-            result.append({'id': id_, 'randomNumber': rand_new})
-            updates.append((rand_new, id_))
-        await conn.executemany('UPDATE world SET randomnumber=$1 WHERE id=$2', updates)
+        # the result of this is the int previous random number which we don't actually use
+        await conn.executemany(READ_ROW_SQL, fetch_params)
+        if num_queries <= 5:
+            await conn.executemany(WRITE_ROW_SQL, row_updates)
+        else:
+            await conn.execute(WRITE_ROW_BATCH_SQL, update_ids, numbers)
 
-    return json_response(result)
+    worlds = [{'id': row_id, 'randomNumber': number} for row_id, number in row_updates]
+    return json_response(worlds)
 
 
 async def plaintext(request):

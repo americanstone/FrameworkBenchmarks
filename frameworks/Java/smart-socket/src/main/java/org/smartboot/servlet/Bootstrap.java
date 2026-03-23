@@ -1,22 +1,9 @@
 package org.smartboot.servlet;
 
-import org.smartboot.aio.EnhanceAsynchronousChannelProvider;
-import org.smartboot.http.HttpRequest;
-import org.smartboot.http.HttpResponse;
-import org.smartboot.http.server.HttpMessageProcessor;
-import org.smartboot.http.server.HttpRequestProtocol;
-import org.smartboot.http.server.Request;
-import org.smartboot.http.server.handle.HttpHandle;
-import org.smartboot.servlet.conf.ServletInfo;
-import org.smartboot.socket.StateMachineEnum;
-import org.smartboot.socket.buffer.BufferFactory;
-import org.smartboot.socket.buffer.BufferPagePool;
-import org.smartboot.socket.extension.plugins.MonitorPlugin;
-import org.smartboot.socket.extension.processor.AbstractMessageProcessor;
-import org.smartboot.socket.transport.AioQuickServer;
-import org.smartboot.socket.transport.AioSession;
 
-import java.io.IOException;
+import tech.smartboot.servlet.Container;
+import tech.smartboot.servlet.ServletContextRuntime;
+import tech.smartboot.servlet.conf.ServletInfo;
 
 /**
  * @author 三刀（zhengjunweimail@163.com）
@@ -24,70 +11,35 @@ import java.io.IOException;
  */
 public class Bootstrap {
 
-    public static void main(String[] args) {
-        System.setProperty("java.nio.channels.spi.AsynchronousChannelProvider", EnhanceAsynchronousChannelProvider.class.getName());
-
-        ContainerRuntime containerRuntime = new ContainerRuntime();
+    public static void main(String[] args) throws Throwable {
+        System.setProperty("smart-servlet-spring-boot-starter", "true");
+        Container containerRuntime = new Container();
         // plaintext
-        ApplicationRuntime applicationRuntime = new ApplicationRuntime("/");
+        ServletContextRuntime applicationRuntime = new ServletContextRuntime(null, Thread.currentThread().getContextClassLoader(), "/");
+        applicationRuntime.setVendorProvider(response -> {
+
+        });
         ServletInfo plainTextServletInfo = new ServletInfo();
         plainTextServletInfo.setServletName("plaintext");
         plainTextServletInfo.setServletClass(HelloWorldServlet.class.getName());
-        plainTextServletInfo.addMapping("/plaintext");
+        plainTextServletInfo.addServletMapping("/plaintext", applicationRuntime);
         applicationRuntime.getDeploymentInfo().addServlet(plainTextServletInfo);
 
         // json
         ServletInfo jsonServletInfo = new ServletInfo();
         jsonServletInfo.setServletName("json");
-        jsonServletInfo.setServletClass(HelloWorldServlet.class.getName());
-        jsonServletInfo.addMapping("/json");
+        jsonServletInfo.setServletClass(JsonServlet.class.getName());
+        jsonServletInfo.addServletMapping("/json", applicationRuntime);
         applicationRuntime.getDeploymentInfo().addServlet(jsonServletInfo);
         containerRuntime.addRuntime(applicationRuntime);
-        containerRuntime.start();
-        HttpMessageProcessor processor = new HttpMessageProcessor();
-        processor.pipeline(new HttpHandle() {
-            @Override
-            public void doHandle(HttpRequest request, HttpResponse response) throws IOException {
-                containerRuntime.doHandle(request, response);
-            }
-        });
-        http(processor);
-    }
-
-    public static void http(final HttpMessageProcessor processor) {
-        AbstractMessageProcessor<Request> messageProcessor = new AbstractMessageProcessor<Request>() {
-            @Override
-            public void process0(AioSession session, Request msg) {
-                processor.process(session, msg);
-            }
-
-            @Override
-            public void stateEvent0(AioSession session, StateMachineEnum stateMachineEnum, Throwable throwable) {
-                processor.stateEvent(session, stateMachineEnum, throwable);
-            }
-        };
-        messageProcessor.addPlugin(new MonitorPlugin(5));
-//        messageProcessor.addPlugin(new SocketOptionPlugin());
-
         int cpuNum = Runtime.getRuntime().availableProcessors();
         // 定义服务器接受的消息类型以及各类消息对应的处理器
-        AioQuickServer<Request> server = new AioQuickServer<>(8080, new HttpRequestProtocol(), messageProcessor);
-        server.setThreadNum(cpuNum + 2)
-                .setReadBufferSize(1024 * 4)
-                .setBufferFactory(new BufferFactory() {
-                    @Override
-                    public BufferPagePool create() {
-                        return new BufferPagePool(10 * 1024 * 1024, cpuNum + 2, 64 * 1024 * 1024, true);
-                    }
-                })
-                .setBannerEnabled(false)
-                .setWriteBuffer(1024 * 4, 8);
+        containerRuntime.getConfiguration()
+                .setThreadNum(cpuNum)
+                .setHeaderLimiter(0)
+                .setReadBufferSize(1024 * 4);
+        containerRuntime.initialize();
+        containerRuntime.start();
 
-//        messageProcessor.addPlugin(new BufferPageMonitorPlugin(server, 6));
-        try {
-            server.start();
-        } catch (IOException e) {
-            e.printStackTrace();
-        }
     }
 }

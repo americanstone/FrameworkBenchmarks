@@ -1,7 +1,15 @@
-import { serve } from "https://deno.land/std@v0.50.0/http/server.ts";
+const HELLO_WORLD_STR = "Hello, World!";
+const options: ResponseInit = { headers: { "Server": "Deno" } };
 
-import { handlers } from "./handlers.ts";
-
-for await (const req of serve("0.0.0.0:8080")) {
-  handlers[req.url](req);
-}
+export default {
+  fetch: (req: Request) => {
+    const path = req.url.slice(req.url.indexOf("/", 8));
+    if (path == "/plaintext") {
+      return new Response(HELLO_WORLD_STR, options);
+    } else if (path == "/json") {
+      return Response.json({ message: HELLO_WORLD_STR }, options);
+    } else {
+      return new Response("404 Not Found", { status: 404, ...options });
+    }
+  },
+};

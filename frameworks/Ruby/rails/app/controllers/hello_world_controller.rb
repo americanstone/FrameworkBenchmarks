@@ -1,53 +1,54 @@
 # frozen_string_literal: true
 
-class HelloWorldController < ApplicationController
-  def plaintext
-    render plain: 'Hello, World!'
-  end
+class HelloWorldController < ActionController::API
+  include DateHeader
 
-  def json
-    render json: { message: 'Hello, World!' }
-  end
+  QUERY_RANGE = 1..10_000    # range of IDs in the Fortune DB
+  ALL_IDS = QUERY_RANGE.to_a # enumeration of all the IDs in fortune DB
+  MIN_QUERIES = 1            # min number of records that can be retrieved
+  MAX_QUERIES = 500          # max number of records that can be retrieved
 
   def db
-    render json: World.find(Random.rand(1..10000))
+    render json: World.find(random_id).attributes
   end
 
   def query
-    queries = params[:queries].to_i
-    queries = 1 if queries < 1
-    queries = 500 if queries > 500
-
-    numbers = (1..10000).to_a.sample(queries)
-    results = numbers.map do |id|
-      World.find(id)
+    results = ALL_IDS.sample(query_count).map do |id|
+      World.find(id).attributes
     end
 
     render json: results
   end
 
-  def fortune
-    @fortunes = Fortune.all.to_a
-    @fortunes << Fortune.new(id: 0, message: 'Additional fortune added at request time.')
-    @fortunes = @fortunes.sort_by(&:message)
+  def cached_query
+    keys = ALL_IDS.sample(query_count).map { "world_#{_1}" }
+    items = Rails.cache.fetch_multi(*keys) do |id|
+      raise "Could not find World with id: #{id} in cache"
+    end
+
+    render json: items.values
   end
 
   def update
-    queries = (params[:queries] || 1).to_i
-    queries = 1 if queries < 1
-    queries = 500 if queries > 500
-
-    worlds = queries.times.map{Random.rand(1..10_000)}.map do |id|
-      # get a random row from the database, which we know has 10000
-      # rows with ids 1 - 10000
-      world = World.select(:id, :randomNumber).find(id)
-      begin
-        rn = Random.rand(1..10000)
-      end while rn == world.randomNumber
-      world.update_column(:randomNumber, rn)
-      world
+    worlds = ALL_IDS.sample(query_count).map do |id|
+      world = World.find(id)
+      new_value = random_id
+      new_value = random_id until new_value != world.randomNumber
+      { id: id, randomNumber: new_value }
     end
+    World.upsert_all(worlds.sort_by!{_1[:id]})
 
     render json: worlds
+  end
+
+  private
+
+  def query_count
+    queries = params[:queries].to_i
+    queries.clamp(MIN_QUERIES, MAX_QUERIES)
+  end
+
+  def random_id
+    Random.rand(QUERY_RANGE)
   end
 end

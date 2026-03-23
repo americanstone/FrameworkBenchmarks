@@ -5,18 +5,21 @@
  */
 package org.redkalex.benchmark;
 
+import org.redkale.annotation.Serial;
+import org.redkale.convert.ConvertStandardString;
 import org.redkale.convert.json.JsonConvert;
 
 /**
  *
  * @author zhangjx
  */
-public class Message { 
+@Serial
+public final class Message {
 
+    @ConvertStandardString
     private String message;
 
-    public Message() {
-    }
+    public Message() {}
 
     public Message(String message) {
         this.message = message;

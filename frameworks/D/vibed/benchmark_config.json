@@ -12,7 +12,7 @@
       "approach": "Realistic",
       "classification": "Micro",
       "database": "MongoDB",
-      "framework": "vibe.d",
+      "framework": "vibed",
       "language": "D",
       "flavor": "DLang2",
       "orm": "Micro",
@@ -26,10 +26,8 @@
       "tags": ["broken"]
     },
     "dmd-pgsql": {
-      "json_url": "/json",
       "db_url": "/db",
       "query_url": "/queries?queries=",
-      "plaintext_url": "/plaintext",
       "fortune_url": "/fortunes",
       "update_url": "/updates?queries=",
       "port": 8080,
@@ -46,8 +44,7 @@
       "database_os": "Linux",
       "display_name": "vibe.d-pgsql",
       "notes": "",
-      "versus": "vibed",
-      "tags": ["broken"]
+      "versus": "vibed"
     },
     "ldc": {
       "json_url": "/json",
@@ -74,12 +71,12 @@
       "tags": ["broken"]
     },
     "ldc-pgsql": {
-      "json_url": "/json",
       "db_url": "/db",
       "query_url": "/queries?queries=",
       "plaintext_url": "/plaintext",
       "fortune_url": "/fortunes",
       "update_url": "/updates?queries=",
+      "json_url": "/json",
       "port": 8080,
       "approach": "Realistic",
       "classification": "Platform",
@@ -94,8 +91,7 @@
       "database_os": "Linux",
       "display_name": "vibe.d-ldc-pgsql",
       "notes": "",
-      "versus": "vibed",
-      "tags": ["broken"]
+      "versus": "vibed"
     }
   }]
 }

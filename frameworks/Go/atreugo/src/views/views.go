@@ -5,7 +5,7 @@ import (
 	"context"
 	"sort"
 
-	pgx "github.com/jackc/pgx/v4"
+	pgx "github.com/jackc/pgx/v5"
 	"github.com/savsgio/atreugo/v11"
 )
 
@@ -139,7 +139,7 @@ func Updates(ctx *atreugo.RequestCtx) error {
 		return worlds.W[i].ID < worlds.W[j].ID
 	})
 
-	batch := &pgx.Batch{}
+	batch := new(pgx.Batch)
 
 	for i := 0; i < queries; i++ {
 		w := &worlds.W[i]

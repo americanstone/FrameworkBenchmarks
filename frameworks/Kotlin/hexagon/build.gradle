@@ -1,39 +1,34 @@
 
 plugins {
-    id "org.jetbrains.kotlin.jvm" version "1.3.72"
+    id "org.jetbrains.kotlin.jvm" version "2.3.0" apply false
+    id "org.graalvm.buildtools.native" version "0.11.3" apply false
 }
 
-apply(from: "$gradleScripts/kotlin.gradle")
-apply(from: "$gradleScripts/application.gradle")
+version = "1.0.0"
+description = "TFB benchmark"
+group = "com.hexagontk"
 
-apply(plugin: "war")
+ext {
+    hexagonVersion = "4.3.1"
+    jettyVersion = "12.1.5"
+    nettyVersion = "4.2.9.Final"
 
-defaultTasks("installDist")
+    hikariVersion = "7.0.2"
+    postgresqlVersion = "42.7.8"
+    vertxVersion = "5.0.6"
+    cache2kVersion = "2.6.1.Final"
 
-application {
-    mainClassName = "com.hexagonkt.BenchmarkKt"
+    applicationClass = "com.hexagontk.BenchmarkKt"
+    modules = "java.naming,java.sql,java.management"
+    gradleScripts = "https://raw.githubusercontent.com/hexagontk/hexagon/$hexagonVersion/gradle"
 }
 
-war {
-    archiveFileName = "ROOT.war"
+subprojects {
+    version = rootProject.version
+
+    apply(from: "$gradleScripts/kotlin.gradle")
 }
 
-installDist.dependsOn("war")
-
-dependencies {
-    implementation("com.hexagonkt:store_mongodb:$hexagonVersion")
-    implementation("com.hexagonkt:http_server_jetty:$hexagonVersion")
-    implementation("com.hexagonkt:templates_pebble:$hexagonVersion")
-
-    implementation("com.zaxxer:HikariCP:$hikariVersion")
-    implementation("org.postgresql:postgresql:$postgresqlVersion")
-
-    implementation("org.slf4j:slf4j-jdk14:1.7.30")
-    runtimeOnly("org.slf4j:jcl-over-slf4j:1.7.30")
-    runtimeOnly("org.slf4j:log4j-over-slf4j:1.7.30")
-
-    // providedCompile excludes the dependency only in the WAR, not in the distribution
-    providedCompile("org.eclipse.jetty:jetty-webapp:$jettyVersion") { exclude module: "slf4j-api" }
-
-    testImplementation("com.hexagonkt:http_client_ahc:$hexagonVersion")
+tasks.wrapper {
+    gradleVersion = "9.2.1"
 }

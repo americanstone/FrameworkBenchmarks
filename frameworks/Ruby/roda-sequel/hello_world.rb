@@ -1,85 +1,105 @@
 # frozen_string_literal: true
+require 'bundler/setup'
+Bundler.require(:default) # Load core modules
+
+require_relative 'db'
+require 'time'
 
 # Our Rack application to be executed by rackup
 class HelloWorld < Roda
-  plugin :default_headers, 'Content-Type'=>'text/html; charset=utf-8'
-  plugin :default_headers, 'Server'=>SERVER_STRING if SERVER_STRING
+  MAX_PK = 10_000
+  QUERY_RANGE = (1..MAX_PK).freeze
+  ALL_IDS = QUERY_RANGE.to_a
+  QUERIES_MIN = 1
+  QUERIES_MAX = 500
+
+  CONTENT_TYPE = 'Content-Type'
+  JSON_TYPE = 'application/json'
+  HTML_TYPE = 'text/html; charset=utf-8'
+  PLAINTEXT_TYPE = 'text/plain'
+  DATE_HEADER = 'Date'
+  SERVER_HEADER = 'Server'
+  SERVER_STRING = 'roda'
+
   plugin :hooks
-  plugin :json
-  plugin :render, :escape=>true, :layout_opts=>{ :cache_key=>'default_layout' }
-  plugin :static_routing
+  plugin :render, escape: true, layout_opts: { cache_key: "default_layout" }
+  plugin :default_headers, SERVER_HEADER => SERVER_STRING
 
   def bounded_queries
-    queries = request['queries'].to_i
-    return QUERIES_MIN if queries < QUERIES_MIN
-    return QUERIES_MAX if queries > QUERIES_MAX
-    queries
+    queries = request.params["queries"].to_i
+    queries.clamp(QUERIES_MIN, QUERIES_MAX)
   end
 
   # Return a random number between 1 and MAX_PK
   def rand1
-    rand(MAX_PK).succ
+    rand(MAX_PK) + 1
   end
 
-  after do
-    response['Date'] = Time.now.httpdate
-  end
+  route do |r|
+    response[DATE_HEADER] = Time.now.httpdate if defined?(Puma)
 
-  # Test type 1: JSON serialization
-  static_get '/json' do |_|
-    { :message=>'Hello, World!' }
-  end
+    # Test type 1: JSON serialization
+    r.is "json" do
+      response[CONTENT_TYPE] = JSON_TYPE
+      JSON.generate({ message: "Hello, World!" })
+    end
 
-  # Test type 2: Single database query
-  static_get '/db' do |_|
-    World.with_pk(rand1).values
-  end
+    # Test type 2: Single database query
+    r.is "db" do
+      response[CONTENT_TYPE] = JSON_TYPE
+      JSON.generate(World.with_pk(rand1).values)
+    end
 
-  # Test type 3: Multiple database queries
-  static_get '/queries' do |_|
-    worlds =
-      DB.synchronize do
-        Array.new(bounded_queries) do
-          World.with_pk(rand1)
+    # Test type 3: Multiple database queries
+    r.is "queries" do
+      response[CONTENT_TYPE] = JSON_TYPE
+      ids = ALL_IDS.sample(bounded_queries)
+      worlds =
+        DB.synchronize do
+          ids.map do |id|
+            World.with_pk(id).values
+          end
         end
-      end
+      JSON.generate(worlds)
+    end
 
-    worlds.map!(&:values)
-  end
+    # Test type 4: Fortunes
+    r.is "fortunes" do
+      response[CONTENT_TYPE] = HTML_TYPE
+      @fortunes = Fortune.all
 
-  # Test type 4: Fortunes
-  static_get '/fortunes' do |_|
-    @fortunes = Fortune.all
-    @fortunes << Fortune.new(
-      :id=>0,
-      :message=>'Additional fortune added at request time.'
-    )
-    @fortunes.sort_by!(&:message)
+      fortune = Fortune.new
+      fortune.id = 0
+      fortune.message = "Additional fortune added at request time."
+      @fortunes << fortune
 
-    view :fortunes
-  end
+      @fortunes.sort_by!(&:message)
+      view :fortunes
+    end
 
-  # Test type 5: Database updates
-  static_get '/updates' do |_|
-    worlds =
+    # Test type 5: Database updates
+    r.is "updates" do
+      response[CONTENT_TYPE] = JSON_TYPE
+      worlds = []
+      ids = ALL_IDS.sample(bounded_queries)
       DB.synchronize do
-        Array.new(bounded_queries) do
-          world = World.with_pk(rand1)
-          world.update(:randomnumber=>rand1)
-          world
-        end
+        worlds =
+          ids.map do |id|
+            world = World.with_pk(id)
+            new_value = rand1
+            new_value = rand1 while new_value == world.randomnumber
+            world.randomnumber = new_value
+            world
+          end
+        World.batch_update(worlds)
       end
+      JSON.generate(worlds.map!(&:values))
+    end
 
-    worlds.map!(&:values)
+    # Test type 6: Plaintext
+    r.is "plaintext" do
+      response[CONTENT_TYPE] = PLAINTEXT_TYPE
+      "Hello, World!"
+    end
   end
-
-  # Test type 6: Plaintext
-  static_get '/plaintext' do |_|
-    response['Content-Type'] = 'text/plain'
-
-    'Hello, World!'
-  end
-
-  # Even though we don't have any non-static routes, this is still required.
-  route { |_| }
 end

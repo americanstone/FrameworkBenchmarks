@@ -1,62 +1,76 @@
-﻿using BeetleX;
-using BeetleX.Buffers;
-using BeetleX.Dispatchs;
-using System;
-using System.Collections.Concurrent;
-using System.Text;
+﻿//using BeetleX;
+//using BeetleX.Buffers;
+//using BeetleX.Dispatchs;
+//using System;
+//using System.Collections.Concurrent;
+//using System.Text;
+//using System.Text.Json;
 
-namespace PlatformBenchmarks
-{
-    public class HttpToken
-    {
-        private byte[] mLengthBuffer = new byte[10];
+//namespace PlatformBenchmarks
+//{
+//    public class HttpToken
+//    {
+//        private byte[] mLengthBuffer = new byte[10];
 
-        public RawDb Db { get; set; }
+//        public RawDb Db { get; set; }
 
-        public HttpToken()
-        {
+//        public HttpToken()
+//        {
 
-        }
+//        }
 
-        public SingleThreadDispatcher<HttpToken> ThreadDispatcher { get; set; }
+//        public SingleThreadDispatcher<HttpToken> ThreadDispatcher { get; set; }
 
-        public ConcurrentQueue<RequestData> Requests { get; set; } = new ConcurrentQueue<RequestData>();
+//        public ConcurrentQueue<RequestData> Requests { get; set; } = new ConcurrentQueue<RequestData>();
 
-        public ISession Session { get; set; }
+//        public Utf8JsonWriter Utf8JsonWriter { get; set; }
 
-        public RequestData CurrentRequest { get; set; }
+//        public ISession Session { get; set; }
 
-        public byte[] GetLengthBuffer(string length)
-        {
-            Encoding.ASCII.GetBytes(length, 0, length.Length, mLengthBuffer, 0);
-            for (int i = length.Length; i < 10; i++)
-            {
-                mLengthBuffer[i] = 32;
-            }
-            return mLengthBuffer;
-        }
+//        public RequestData CurrentRequest { get; set; }
 
-        public int ContentPostion { get; set; }
+//        private HtmlBufferWriter mHtmlBufferWriter = null;
 
-        public MemoryBlockCollection ContentLength { get; set; }
+//        public HtmlBufferWriter GetHtmlBufferWriter()
+//        {
+//            if (mHtmlBufferWriter == null)
+//                mHtmlBufferWriter = new HtmlBufferWriter(2048);
+//            return mHtmlBufferWriter;
+//        }
 
-        public void FullLength(string length)
-        {
-            var item = GetLengthBuffer(length);
-            ContentLength.Full(item);
-        }
+//        public byte[] GetLengthBuffer(string length)
+//        {
+//            Encoding.ASCII.GetBytes(length, 0, length.Length, mLengthBuffer, 0);
+//            for (int i = length.Length; i < mLengthBuffer.Length; i++)
+//            {
+//                mLengthBuffer[i] = 32;
+//            }
+//            mLengthBuffer[6] = (byte)'\r';
+//            mLengthBuffer[7] = (byte)'\n';
+//            return mLengthBuffer;
+//        }
 
-        private int mProcessStatus = 0;
+//        public int ContentPostion { get; set; }
 
-        public void CompletedProcess()
-        {
-            System.Threading.Interlocked.Exchange(ref mProcessStatus, 0);
-        }
+//        public MemoryBlockCollection ContentLength { get; set; }
 
-        public bool EnterProcess()
-        {
-            return System.Threading.Interlocked.CompareExchange(ref mProcessStatus, 1, 0) == 0;
-        }
+//        public void FullLength(string length)
+//        {
+//            var item = GetLengthBuffer(length);
+//            ContentLength.Full(item);
+//        }
 
-    }
-}
+//        private int mProcessStatus = 0;
+
+//        public void CompletedProcess()
+//        {
+//            System.Threading.Interlocked.Exchange(ref mProcessStatus, 0);
+//        }
+
+//        public bool EnterProcess()
+//        {
+//            return System.Threading.Interlocked.CompareExchange(ref mProcessStatus, 1, 0) == 0;
+//        }
+
+//    }
+//}

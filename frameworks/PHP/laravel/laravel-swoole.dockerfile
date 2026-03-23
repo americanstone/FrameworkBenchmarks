@@ -1,38 +1,24 @@
-FROM php:7.4
+FROM phpswoole/swoole:php8.5
 
-RUN pecl install swoole > /dev/null && \
-    docker-php-ext-enable swoole
+RUN apt-get update -yqq && apt-get install libicu-dev -y > /dev/null && \
+    docker-php-ext-install intl pcntl > /dev/null
+RUN echo "opcache.enable_cli=1" >> /usr/local/etc/php/conf.d/docker-php-ext-opcache.ini
+RUN echo "opcache.jit=1205" >> /usr/local/etc/php/conf.d/docker-php-ext-opcache.ini
+RUN echo "opcache.jit_buffer_size=128M" >> /usr/local/etc/php/conf.d/docker-php-ext-opcache.ini
 
-RUN docker-php-ext-install pdo_mysql > /dev/null
-
-ADD ./ /laravel
 WORKDIR /laravel
-COPY deploy/swoole/php.ini /usr/local/etc/php/
+COPY --link . .
 
-RUN mkdir -p /laravel/bootstrap/cache
-RUN mkdir -p /laravel/storage/framework/sessions
-RUN mkdir -p /laravel/storage/framework/views
-RUN mkdir -p /laravel/storage/framework/cache
+RUN mkdir -p bootstrap/cache \
+            storage/logs \
+            storage/framework/sessions \
+            storage/framework/views \
+            storage/framework/cache
 
-RUN chmod -R 777 /laravel
-
-RUN echo "APP_SWOOLE=true" >> .env
-
-# Install composer using the installation method documented at https://getcomposer.org/doc/faqs/how-to-install-composer-programmatically.md
-# This method was chosen because composer is not part of the apt repositories that are in the default PHP 7.4 docker image
-# Adding alternate apt php repos can potentially cause problems with extension compatibility between the php build from the docker image and the alternate php build
-# An additional benefit of this method is that the correct version of composer will be used for the environment and version of the php system in the docker image
-RUN deploy/swoole/install-composer.sh
-
-RUN apt-get update -yqq > /dev/null && \
-    apt-get install -yqq git unzip > /dev/null
-COPY deploy/swoole/composer* ./
-RUN php composer.phar install -a --no-dev --quiet
-
+RUN composer require laravel/octane:^2 --update-no-dev --no-scripts --quiet
+RUN php artisan octane:install --server="swoole"
 RUN php artisan optimize
-
-RUN chmod -R 777 /laravel
 
 EXPOSE 8080
 
-CMD php artisan swoole:http start
+ENTRYPOINT ["php", "artisan", "octane:swoole", "--host=0.0.0.0", "--port=8080", "--workers=auto", "--task-workers=auto", "--max-requests=10000"]

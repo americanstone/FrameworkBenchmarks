@@ -7,7 +7,6 @@
       "port": 8080,
       "approach": "Realistic",
       "classification": "Platform",
-      "framework": "None",
       "language": "TypeScript",
       "flavor": "deno",
       "platform": "deno",

@@ -7,18 +7,18 @@
     "Sönke Ludwig"
   ],
   "dependencies": {
-    "vibe-d": "0.8.5",
-    "mir-random": "2.2.3",
-    "vibe-d:tls": "0.8.5"
+    "vibe-d": "0.10.2",
+    "mir-random": "2.2.20",
+    "vibe-d:tls": "0.10.2"
   },
   "targetType": "executable",
   "sourcePaths": [],
   "subConfigurations": {
-    "vibe-d": "vibe-core",
     "vibe-d:tls": "notls"
   },
   "versions": [
-    "VibeManualMemoryManagement"
+    "VibeManualMemoryManagement",
+    "VibeHighEventPriority"
   ],
   "configurations": [
     {
@@ -29,7 +29,8 @@
       "name": "postgresql",
       "mainSourceFile": "source/postgresql.d",
       "dependencies": {
-        "vibe-d-postgresql": "2.0.2"
+        "vibe-d-postgresql": "3.2.0-rc1",
+        "dpq2": "1.2.3"
       }
     }
   ],

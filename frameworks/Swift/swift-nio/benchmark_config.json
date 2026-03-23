@@ -1,9 +1,10 @@
 {
   "framework": "swift-nio",
+  "maintainers": ["adam-fowler"],
   "tests": [{
     "default": {
-      "json_url": "/j",
-      "plaintext_url": "/p",
+      "json_url": "/json",
+      "plaintext_url": "/plaintext",
       "port": 8080,
       "approach": "Realistic",
       "classification": "Platform",

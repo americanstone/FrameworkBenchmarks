@@ -1,25 +1,26 @@
 ---
-_: &common
+default: &default
   database: hello_world
   username: benchmarkdbuser
   password: benchmarkdbpass
   host: tfb-database
   timeout: 5000
+  pool: <%= ENV.fetch("RAILS_MAX_THREADS") { 3 } %>
 
 development:
-  <<: *common
-  pool: 5
+  <<: *default
 
 test:
-  <<: *common
-  pool: 64
+  <<: *default
 
 production_mysql:
-  <<: *common
-  adapter: mysql2
-  pool: 64
+  <<: *default
+  adapter: trilogy
+  ssl: true
+  ssl_mode: 4 <%# Trilogy::SSL_PREFERRED_NOVERIFY %>
+  tls_min_version: 3 <%# Trilogy::TLS_VERSION_12 %>
 
 production_postgresql:
-  <<: *common
+  <<: *default
   adapter: postgresql
-  pool: 64
+  encoding: unicode

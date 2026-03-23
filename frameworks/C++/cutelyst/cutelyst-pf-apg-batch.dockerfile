@@ -1,4 +1,4 @@
-FROM ubuntu:20.04
+FROM ubuntu:22.04
 
 RUN apt-get update -qq && \
     apt-get install -yqq locales wget build-essential
@@ -32,7 +32,7 @@ RUN sed -i "s|Driver=.*|Driver=${DRIVER}|g" /cutelyst.ini
 
 EXPOSE 8080
 
-CMD cutelyst-wsgi2 \
+CMD ${TROOT}/build/cutelyst-benchmarks \
     --ini /cutelyst.ini:uwsgi \
     --application ${CUTELYST_APP} \
     --processes=$(nproc) \

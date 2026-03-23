@@ -1,197 +1,157 @@
-use std::borrow::Cow;
-use std::cell::RefCell;
-use std::fmt::Write as FmtWrite;
-use std::io;
-
-use bytes::{Bytes, BytesMut};
-use futures::stream::futures_unordered::FuturesUnordered;
-use futures::{Future, FutureExt, StreamExt, TryStreamExt};
-use ntex::web::Error;
-use random_fast_rng::{FastRng, Random};
+use nanorand::{Rng, WyRand};
+use ntex::util::Bytes;
 use smallvec::SmallVec;
-use tokio_postgres::types::ToSql;
-use tokio_postgres::{connect, Client, NoTls, Statement};
-use yarte::{ywrite_html, Serialize};
+use tokio_postgres::{connect, Client, Statement};
+use yarte::TemplateBytesTrait;
 
-#[derive(Serialize, Debug)]
+use super::utils;
+
+#[derive(Copy, Clone, Debug, sonic_rs::Serialize)]
 pub struct World {
     pub id: i32,
     pub randomnumber: i32,
 }
 
-#[derive(serde::Serialize, Debug)]
-pub struct Fortune {
+#[derive(Debug, sonic_rs::Serialize)]
+pub struct Fortune<'a> {
     pub id: i32,
-    pub message: Cow<'static, str>,
+    pub message: &'a str,
+}
+
+#[derive(yarte::TemplateBytes)]
+#[template(path = "fortune.hbs")]
+pub struct FortunesTemplate<'a, 'b> {
+    pub fortunes: &'a [Fortune<'b>],
 }
 
 /// Postgres interface
 pub struct PgConnection {
     cl: Client,
+    rng: WyRand,
     fortune: Statement,
     world: Statement,
-    rng: RefCell<FastRng>,
-    updates: Vec<Statement>,
+    updates: Statement,
 }
 
 impl PgConnection {
     pub async fn connect(db_url: &str) -> PgConnection {
-        let (cl, conn) = connect(db_url, NoTls)
+        let (cl, conn) = connect(db_url, utils::db_config())
             .await
             .expect("can not connect to postgresql");
-        ntex::rt::spawn(conn.map(|_| ()));
+        ntex::rt::spawn(async move {
+            let _ = conn.await;
+        });
 
         let fortune = cl.prepare("SELECT * FROM fortune").await.unwrap();
-        let mut updates = Vec::new();
-        for num in 1..=500u16 {
-            let mut pl: u16 = 1;
-            let mut q = String::new();
-            q.push_str("UPDATE world SET randomnumber = CASE id ");
-            for _ in 1..=num {
-                let _ = write!(&mut q, "when ${} then ${} ", pl, pl + 1);
-                pl += 2;
-            }
-            q.push_str("ELSE randomnumber END WHERE id IN (");
-            for _ in 1..=num {
-                let _ = write!(&mut q, "${},", pl);
-                pl += 1;
-            }
-            q.pop();
-            q.push(')');
-            updates.push(cl.prepare(&q).await.unwrap());
-        }
+        let updates = cl.prepare("UPDATE world w SET randomnumber = u.new_val FROM (SELECT unnest($1::int[]) as id, unnest($2::int[]) as new_val) u WHERE w.id = u.id").await.unwrap();
         let world = cl.prepare("SELECT * FROM world WHERE id=$1").await.unwrap();
 
         PgConnection {
             cl,
-            fortune,
             world,
             updates,
-            rng: RefCell::new(FastRng::new()),
+            fortune,
+            rng: WyRand::new(),
         }
     }
 }
 
 impl PgConnection {
-    pub fn get_world(&self) -> impl Future<Output = Result<Bytes, Error>> {
-        let random_id = (self.rng.borrow_mut().get_u32() % 10_000 + 1) as i32;
-        let fut = self.cl.query_one(&self.world, &[&random_id]);
+    pub async fn get_world(&self) -> Bytes {
+        let random_id = (self.rng.clone().generate::<u32>() % 10_000 + 1) as i32;
+        let row = self.cl.query_one(&self.world, &[&random_id]).await.unwrap();
 
-        async move {
-            let row = fut.await.map_err(|e| {
-                Error::from(io::Error::new(io::ErrorKind::Other, format!("{:?}", e)))
-            })?;
+        utils::buffer(256, |body| {
+            sonic_rs::to_writer(
+                utils::BVecWriter(body),
+                &World {
+                    id: row.get(0),
+                    randomnumber: row.get(1),
+                },
+            )
+            .unwrap();
+            body.take()
+        })
+    }
 
-            Ok(World {
+    pub async fn get_worlds(&self, num: usize) -> Bytes {
+        let mut rng = self.rng.clone();
+        let mut queries = Vec::with_capacity(num);
+        (0..num).for_each(|_| {
+            let w_id = (rng.generate::<u32>() % 10_000 + 1) as i32;
+            queries.push(self.cl.query_one(&self.world, &[&w_id]));
+        });
+
+        let mut worlds = Vec::with_capacity(num);
+        for fut in queries {
+            let row = fut.await.unwrap();
+            worlds.push(World {
                 id: row.get(0),
                 randomnumber: row.get(1),
-            }
-            .to_bytes::<BytesMut>(40))
+            })
         }
+
+        utils::buffer(2 * 1024, |body| {
+            sonic_rs::to_writer(utils::BVecWriter(body), &worlds[..]).unwrap();
+            body.take()
+        })
     }
 
-    pub fn get_worlds(
-        &self,
-        num: usize,
-    ) -> impl Future<Output = Result<Vec<World>, io::Error>> {
-        let worlds = FuturesUnordered::new();
-        let mut rng = self.rng.borrow_mut();
-        for _ in 0..num {
-            let w_id = (rng.get_u32() % 10_000 + 1) as i32;
-            worlds.push(
-                self.cl
-                    .query_one(&self.world, &[&w_id])
-                    .map(|res| match res {
-                        Err(e) => {
-                            Err(io::Error::new(io::ErrorKind::Other, format!("{:?}", e)))
-                        }
-                        Ok(row) => Ok(World {
-                            id: row.get(0),
-                            randomnumber: row.get(1),
-                        }),
-                    }),
-            );
-        }
+    pub async fn update(&self, num: usize) -> Bytes {
+        let mut rng = nanorand::tls_rng();
+        let mut ids = Vec::with_capacity(num);
+        let mut numbers = Vec::with_capacity(num);
+        let mut worlds = SmallVec::<[_; 32]>::new();
+        let mut queries = SmallVec::<[_; 32]>::new();
 
-        worlds.try_collect()
+        (0..num).for_each(|_| {
+            let w_id = (rng.generate::<u32>() % 10_000 + 1) as i32;
+            ids.push(w_id);
+            numbers.push((rng.generate::<u32>() % 10_000 + 1) as i32);
+        });
+        ids.sort();
+
+        (0..num).for_each(|idx| {
+            worlds.push(World {
+                id: ids[idx],
+                randomnumber: numbers[idx],
+            });
+            queries.push(self.cl.query_one(&self.world, &[&ids[idx]]));
+        });
+        let update = self.cl.query(&self.updates, &[&ids, &numbers]);
+
+        for query in queries {
+            let _rand: i32 = query.await.unwrap().get(1);
+        }
+        update.await.unwrap();
+
+        utils::buffer(2 * 1024, |body| {
+            sonic_rs::to_writer(utils::BVecWriter(body), &worlds[..]).unwrap();
+            body.take()
+        })
     }
 
-    pub fn update(
-        &self,
-        num: u16,
-    ) -> impl Future<Output = Result<Vec<World>, io::Error>> {
-        let worlds = FuturesUnordered::new();
-        let mut rng = self.rng.borrow_mut();
-        for _ in 0..num {
-            let id = (rng.get_u32() % 10_000 + 1) as i32;
-            let w_id = (rng.get_u32() % 10_000 + 1) as i32;
-            worlds.push(self.cl.query_one(&self.world, &[&w_id]).map(
-                move |res| match res {
-                    Err(e) => {
-                        Err(io::Error::new(io::ErrorKind::Other, format!("{:?}", e)))
-                    }
-                    Ok(row) => {
-                        let world = World {
-                            id: row.get(0),
-                            randomnumber: id,
-                        };
-                        Ok(world)
-                    }
-                },
-            ));
-        }
+    pub async fn tell_fortune(&self) -> Bytes {
+        let rows = self.cl.query_raw(&self.fortune, &[]).await.unwrap();
 
-        let cl = self.cl.clone();
-        let st = self.updates[(num as usize) - 1].clone();
-        async move {
-            let worlds: Vec<World> = worlds.try_collect().await?;
+        let mut fortunes = Vec::with_capacity(16);
+        fortunes.push(Fortune {
+            id: 0,
+            message: "Additional fortune added at request time.",
+        });
+        fortunes.extend(rows.iter().map(|row| Fortune {
+            id: row.get(0),
+            message: row.get(1),
+        }));
+        fortunes.sort_by(|it, next| it.message.cmp(&next.message));
 
-            let mut params: Vec<&dyn ToSql> = Vec::with_capacity(num as usize * 3);
-            for w in &worlds {
-                params.push(&w.id);
-                params.push(&w.randomnumber);
+        utils::buffer(4 * 1024, |body| {
+            FortunesTemplate {
+                fortunes: &fortunes,
             }
-            for w in &worlds {
-                params.push(&w.id);
-            }
+            .write_call(body);
 
-            cl.query(&st, &params)
-                .await
-                .map_err(|e| io::Error::new(io::ErrorKind::Other, format!("{:?}", e)))?;
-
-            Ok(worlds)
-        }
-    }
-
-    pub fn tell_fortune(&self) -> impl Future<Output = Result<Bytes, io::Error>> {
-        let fut = self.cl.query_raw(&self.fortune, &[]);
-
-        async move {
-            let mut stream = fut
-                .await
-                .map_err(|e| io::Error::new(io::ErrorKind::Other, format!("{:?}", e)))?;
-
-            let mut fortunes: SmallVec<[_; 32]> = smallvec::smallvec![Fortune {
-                id: 0,
-                message: Cow::Borrowed("Additional fortune added at request time."),
-            }];
-
-            while let Some(row) = stream.next().await {
-                let row = row.map_err(|e| {
-                    io::Error::new(io::ErrorKind::Other, format!("{:?}", e))
-                })?;
-                fortunes.push(Fortune {
-                    id: row.get(0),
-                    message: Cow::Owned(row.get(1)),
-                });
-            }
-
-            fortunes.sort_by(|it, next| it.message.cmp(&next.message));
-
-            let mut buf = Vec::with_capacity(2048);
-            ywrite_html!(buf, "{{> fortune }}");
-
-            Ok(Bytes::from(buf))
-        }
+            body.take()
+        })
     }
 }

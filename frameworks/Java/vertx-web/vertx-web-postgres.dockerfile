@@ -1,4 +1,4 @@
-FROM maven:3.6.1-jdk-11-slim as maven
+FROM maven:3.9.11-eclipse-temurin-25 as maven
 WORKDIR /vertx-web
 COPY scripts scripts
 COPY src src
@@ -11,7 +11,6 @@ CMD java \
     -server                                           \
     -XX:+UseNUMA                                      \
     -XX:+UseParallelGC                                \
-    -XX:+AggressiveOpts                               \
     -Dvertx.disableMetrics=true                       \
     -Dvertx.disableH2c=true                           \
     -Dvertx.disableWebsockets=true                    \
@@ -20,8 +19,11 @@ CMD java \
     -Dvertx.disableContextTimings=true                \
     -Dvertx.disableTCCL=true                          \
     -Dvertx.disableHttpHeadersValidation=true         \
+    -Dvertx.eventLoopPoolSize=$((`grep --count ^processor /proc/cpuinfo`)) \
+    -Dio.netty.buffer.checkBounds=false               \
+    -Dio.netty.buffer.checkAccessible=false           \
     -jar                                              \
-    target/vertx-web-benchmark-3.9.2-fat.jar          \
+    target/vertx-web-benchmark-5.0.5-fat.jar          \
     --instances                                       \
     `grep --count ^processor /proc/cpuinfo`           \
     --conf                                            \

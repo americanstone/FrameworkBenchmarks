@@ -1,21 +1,10 @@
-FROM golang:1.14
+FROM docker.io/golang:1.24.2
 
-ADD ./ /echo
+ADD ./src /echo
 WORKDIR /echo
 
-RUN mkdir bin
-ENV GOPATH /echo
-ENV PATH ${GOPATH}/bin:${PATH}
-
-RUN curl -sL -o install_glide.sh https://glide.sh/get
-RUN sh install_glide.sh
-
-WORKDIR src
-RUN glide install
-WORKDIR ..
-
-RUN go install app
+RUN GOAMD64=v3 go build -ldflags="-s -w" -o app ./main.go
 
 EXPOSE 8080
 
-CMD app
+CMD ./app

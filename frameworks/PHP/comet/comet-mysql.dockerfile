@@ -1,18 +1,19 @@
-FROM ubuntu:20.04
+FROM ubuntu:22.04
 
 ARG DEBIAN_FRONTEND=noninteractive
 
 RUN apt-get update -yqq && apt-get install -yqq software-properties-common > /dev/null
-RUN LC_ALL=C.UTF-8 add-apt-repository ppa:ondrej/php
-RUN apt-get update -yqq > /dev/null && \
-    apt-get install -yqq php7.4 php7.4-common php7.4-cli php7.4-xml php7.4-mysql  > /dev/null
+RUN LC_ALL=C.UTF-8 add-apt-repository ppa:ondrej/php > /dev/null && \
+    apt-get update -yqq > /dev/null && apt-get upgrade -yqq > /dev/null
 
-RUN apt-get install -yqq composer > /dev/null
+RUN apt-get install -yqq php8.5-cli php8.5-xml php8.5-mysql php8.5-mbstring > /dev/null
 
-RUN apt-get install -y php-pear php-dev libevent-dev > /dev/null
-RUN printf "\n\n /usr/lib/x86_64-linux-gnu/\n\n\nno\n\n\n" | pecl install event > /dev/null && echo "extension=event.so" > /etc/php/7.4/cli/conf.d/event.ini
+COPY --from=composer:latest /usr/bin/composer /usr/local/bin/composer
 
-COPY php.ini /etc/php/7.4/cli/php.ini
+RUN apt-get install -y php-pear php8.5-dev libevent-dev git > /dev/null
+RUN pecl install event-3.1.4 > /dev/null && echo "extension=event.so" > /etc/php/8.5/cli/conf.d/event.ini
+
+COPY php.ini /etc/php/8.5/cli/php.ini
 
 ADD ./ /comet
 WORKDIR /comet

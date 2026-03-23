@@ -1,26 +1,24 @@
 #
 # BUILD
 #
-FROM gradle:6.6-jdk11 AS gradle_build
+FROM docker.io/bellsoft/liberica-runtime-container:jdk-all-25-cds-musl AS build
 USER root
 WORKDIR /hexagon
 
-COPY src src
-COPY build.gradle build.gradle
-COPY gradle.properties gradle.properties
-RUN gradle --quiet --exclude-task test
+ADD . .
+RUN ./gradlew --quiet classes
+RUN ./gradlew --quiet -x test installDist
 
 #
 # RUNTIME
 #
-FROM adoptopenjdk:11-jre-hotspot-bionic
-ENV DBSTORE mongodb
-ENV MONGODB_DB_HOST tfb-database
-ENV WEBENGINE jetty
-ENV PROJECT hexagon
+FROM docker.io/bellsoft/liberica-runtime-container:jre-25-cds-slim-musl
+ARG PROJECT=hexagon_jetty_postgresql
 
-COPY --from=gradle_build /hexagon/build/install/$PROJECT /opt/$PROJECT
+ENV POSTGRESQL_DB_HOST tfb-database
+ENV JDK_JAVA_OPTIONS -XX:+AlwaysPreTouch -XX:+UseParallelGC -XX:+UseNUMA
+ENV maximumPoolSize 300
 
-EXPOSE 9090
+COPY --from=build /hexagon/$PROJECT/build/install/$PROJECT /opt/$PROJECT
 
-ENTRYPOINT /opt/$PROJECT/bin/$PROJECT
+ENTRYPOINT [ "/opt/hexagon_jetty_postgresql/bin/hexagon_jetty_postgresql" ]

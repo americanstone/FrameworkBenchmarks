@@ -1,16 +1,29 @@
-source 'http://rubygems.org'
+source 'https://rubygems.org'
 
-gem 'unicorn', '5.4.1'
-gem 'puma', '3.12.6'
-gem 'activerecord', '5.2.2', :require => 'active_record'
-gem 'rails', '5.2.2'
-gem 'tzinfo-data', '1.2018.7'
-gem 'oj', '3.7.9'
+gem 'rails', '~> 8.1.0'
+gem 'redis', '~> 5.0'
+gem 'tzinfo-data'
 
-group :mysql do
-  gem 'mysql2', '0.5.2'
+group :mysql, optional: true do
+  gem 'trilogy', '~> 2.10'
 end
 
-group :postgresql do
-  gem 'pg', '1.1.4'
+group :postgresql, optional: true do
+  gem 'pg', '~> 1.5'
+end
+
+group :iodine, optional: true do
+  gem 'iodine', '~> 0.7', require: false
+end
+
+group :falcon, optional: true do
+  gem 'falcon', '~> 0.47', require: false
+end
+
+group :puma, optional: true do
+  gem 'puma', '~> 7.1', require: false
+end
+
+group :pitchfork, optional: true do
+  gem 'pitchfork', '~> 0.17'
 end

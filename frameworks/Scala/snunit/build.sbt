@@ -1,12 +1,20 @@
-scalaVersion := "2.11.12"
+import scala.scalanative.build._
+
+scalaVersion := "3.5.2"
+
+val snunitVersion = "0.10.3"
+val jsoniterScalaVersion = "2.33.0"
 
 libraryDependencies ++= Seq(
-  "com.github.lolgab" %%% "snunit" % "0.0.2",
-  "com.github.lolgab" %%% "snunit-async" % "0.0.2",
-  "com.lihaoyi" %%% "upickle" % "1.2.2"
+  "com.github.lolgab" %%% "snunit" % snunitVersion,
+  "com.github.plokhotnyuk.jsoniter-scala" %%% "jsoniter-scala-core" % jsoniterScalaVersion,
+  "com.github.plokhotnyuk.jsoniter-scala" %%% "jsoniter-scala-macros" % jsoniterScalaVersion % "compile-internal"
 )
 
-nativeMode := "release-full"
-nativeLTO := "thin"
+nativeConfig ~= {
+  _.withMode(Mode.releaseFull)
+   .withLTO(LTO.thin)
+   .withGC(GC.commix)
+}
 
 enablePlugins(ScalaNativePlugin)

@@ -1,13 +1,12 @@
-FROM adoptopenjdk/maven-openjdk11:latest as maven
-WORKDIR /micronaut
-COPY src src
-COPY pom.xml pom.xml
-RUN mvn package -q
+FROM gradle:9.3.1-jdk25 as build
+COPY --chown=gradle:gradle . /home/gradle/src
+WORKDIR /home/gradle/src
+RUN gradle micronaut-vertx-pg-client:build -x test -x internalStartTestResourcesService --no-daemon
 
-FROM adoptopenjdk/openjdk11:jdk-11.0.3_7-slim
+FROM container-registry.oracle.com/java/openjdk:25.0.2
 WORKDIR /micronaut
-COPY --from=maven /micronaut/target/hello-micronaut-0.1.jar app.jar
+COPY --from=build /home/gradle/src/micronaut-vertx-pg-client/build/libs/micronaut-vertx-pg-client-all.jar micronaut.jar
+COPY run_benchmark.sh run_benchmark.sh
 
 EXPOSE 8080
-
-CMD ["java", "-server", "-XX:+UseNUMA", "-XX:+UseParallelGC", "-Dmicronaut.environments=benchmark", "-Dlog-root-level=OFF", "-jar", "app.jar"]
+ENTRYPOINT "./run_benchmark.sh"

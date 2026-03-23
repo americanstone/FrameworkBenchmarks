@@ -14,7 +14,7 @@
       "database": "Postgres",
       "framework": "comet",
       "language": "PHP",
-      "flavor": "PHP7",
+      "flavor": "PHP8",
       "orm": "Raw",
       "platform": "workerman",
       "webserver": "None",
@@ -22,7 +22,8 @@
       "database_os": "Linux",
       "display_name": "comet",
       "notes": "",
-      "versus": "workerman"
+      "versus": "workerman",
+      "tags": []
     },
     "mysql": {
       "db_url": "/db",
@@ -35,7 +36,7 @@
       "database": "MySQL",
       "framework": "comet",
       "language": "PHP",
-      "flavor": "PHP7",
+      "flavor": "PHP8",
       "orm": "Raw",
       "platform": "workerman",
       "webserver": "None",
@@ -43,7 +44,8 @@
       "database_os": "Linux",
       "display_name": "comet-mysql",
       "notes": "",
-      "versus": "workerman"
+      "versus": "workerman",
+      "tags": []
     }
   }]
 }
